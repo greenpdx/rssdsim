@@ -1,0 +1,72 @@
+[package]
+name = "rsedsim"
+version = "0.1.0"
+edition = "2024"
+authors = ["rsedsim contributors"]
+description = "A CLI-based system dynamics simulation framework with MCP and A2A protocol support"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/rsedsim"
+keywords = ["simulation", "system-dynamics", "agent-based", "modeling"]
+categories = ["simulation", "science"]
+
+[dependencies]
+# Core serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Numerics and arrays
+ndarray = "0.15"          # Multi-dimensional arrays
+nalgebra = "0.32"         # Linear algebra
+num-traits = "0.2"        # Numeric traits
+
+# Parsing
+pest = "2.7"              # Equation parsing
+pest_derive = "2.7"
+
+# CLI
+clap = { version = "4.5", features = ["derive", "cargo"] }
+colored = "2.1"           # Terminal colors
+
+# I/O
+csv = "1.3"
+quick-xml = "0.31"        # XMILE support
+
+# Random number generation
+rand = "0.8"
+rand_distr = "0.4"
+
+# Async runtime (for protocols)
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# UUID generation
+uuid = { version = "1.7", features = ["v4", "serde"] }
+
+[dev-dependencies]
+criterion = "0.5"         # Benchmarking
+proptest = "1.4"          # Property-based testing
+approx = "0.5"            # Floating-point comparisons
+
+[[bin]]
+name = "rsedsim"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 0
+
+[profile.bench]
+inherits = "release"

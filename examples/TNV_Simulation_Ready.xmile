@@ -1,0 +1,694 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmile version="1.0" xmlns="http://docs.oasis-open.org/xmile/ns/XMILE/v1.0">
+  <header>
+    <name>Tax N Vote System Dynamics Model v4.0</name>
+    <vendor>SavageS Consulting</vendor>
+    <product version="4.0">TNV Complete Model - Proportional, Egalitarian, Duopoly-Breaking</product>
+    <options>
+      <uses_outputs/>
+    </options>
+  </header>
+  
+  <sim_specs>
+    <start>2026</start>
+    <stop>2045</stop>
+    <dt>0.25</dt>
+    <method>Euler</method>
+    <time_units>year</time_units>
+  </sim_specs>
+  
+  <dimensions/>
+  
+  <model>
+    <variables>
+      
+      <!-- ============================================ -->
+      <!-- CORE STOCKS AND FLOWS -->
+      <!-- ============================================ -->
+      
+      <stock name="Perceived_Efficacy">
+        <eqn>0.6</eqn>
+        <inflow>Efficacy_Gain</inflow>
+        <outflow>Efficacy_Loss</outflow>
+        <non_negative/>
+        <units>dmnl</units>
+        <doc>Voter belief TNV affects Congress (0-1 index)</doc>
+      </stock>
+      
+      <flow name="Efficacy_Gain">
+        <eqn>MAX(0, (Target_Efficacy - Perceived_Efficacy) * 0.5)</eqn>
+        <units>dmnl/year</units>
+        <doc>Efficacy increases when Congress responds</doc>
+      </flow>
+      
+      <flow name="Efficacy_Loss">
+        <eqn>MAX(0, (Perceived_Efficacy - Target_Efficacy) * 0.3)</eqn>
+        <units>dmnl/year</units>
+        <doc>Efficacy decreases when Congress ignores</doc>
+      </flow>
+      
+      <stock name="Congressional_Response">
+        <eqn>0.5</eqn>
+        <inflow>Response_Increase</inflow>
+        <outflow>Response_Decrease</outflow>
+        <non_negative/>
+        <units>dmnl</units>
+        <doc>Congressional alignment with People's Budget (0-1)</doc>
+      </stock>
+      
+      <flow name="Response_Increase">
+        <eqn>MAX(0, (Target_Response - Congressional_Response) * 0.4)</eqn>
+        <units>dmnl/year</units>
+        <doc>Response increases under pressure</doc>
+      </flow>
+      
+      <flow name="Response_Decrease">
+        <eqn>MAX(0, (Congressional_Response - Target_Response) * 0.2)</eqn>
+        <units>dmnl/year</units>
+        <doc>Response decreases when pressure drops</doc>
+      </flow>
+      
+      <stock name="Voter_Awareness">
+        <eqn>0.3</eqn>
+        <inflow>Awareness_Growth</inflow>
+        <non_negative/>
+        <units>dmnl</units>
+        <doc>Voter knowledge of Budget_Discrepancy (0-1)</doc>
+      </stock>
+      
+      <flow name="Awareness_Growth">
+        <eqn>Total_Education_Effect * (1 - Voter_Awareness) * 0.3</eqn>
+        <units>dmnl/year</units>
+        <doc>Awareness grows with education, saturates at 1.0</doc>
+      </flow>
+      
+      <stock name="Available_Templates">
+        <eqn>50</eqn>
+        <inflow>Template_Creation</inflow>
+        <non_negative/>
+        <units>templates</units>
+        <doc>Number of budget templates from organizations</doc>
+      </stock>
+      
+      <flow name="Template_Creation">
+        <eqn>Template_Creation_Rate</eqn>
+        <units>templates/year</units>
+        <doc>New templates created annually</doc>
+      </flow>
+      
+      <stock name="Party_Discipline">
+        <eqn>1.0</eqn>
+        <outflow>Discipline_Breakdown</outflow>
+        <non_negative/>
+        <units>dmnl</units>
+        <doc>Party ability to enforce votes (1=strong, 0=broken)</doc>
+      </stock>
+      
+      <flow name="Discipline_Breakdown">
+        <eqn>Discipline_Erosion_Rate * Party_Discipline</eqn>
+        <units>dmnl/year</units>
+        <doc>Party discipline erodes from custom candidates</doc>
+      </flow>
+      
+      <stock name="Populist_Support">
+        <eqn>0.85</eqn>
+        <inflow>Support_Growth</inflow>
+        <outflow>Support_Decay</outflow>
+        <non_negative/>
+        <units>dmnl</units>
+        <doc>Cross-partisan populist coalition support (0-1)</doc>
+      </stock>
+      
+      <flow name="Support_Growth">
+        <eqn>Egalitarianism_Appeal * (1 - Populist_Support) * 0.1</eqn>
+        <units>dmnl/year</units>
+        <doc>Support grows as economic egalitarianism spreads</doc>
+      </flow>
+      
+      <flow name="Support_Decay">
+        <eqn>Populist_Support * 0.02</eqn>
+        <units>dmnl/year</units>
+        <doc>Slow natural decay without reinforcement</doc>
+      </flow>
+      
+      <!-- ============================================ -->
+      <!-- CONSTANTS AND PARAMETERS -->
+      <!-- ============================================ -->
+      
+      <aux name="US_Taxpayers">
+        <eqn>150000000</eqn>
+        <units>people</units>
+        <doc>Eligible taxpayer population</doc>
+      </aux>
+      
+      <aux name="Number_of_Organizations">
+        <eqn>1000</eqn>
+        <units>organizations</units>
+        <doc>Organizations creating templates</doc>
+      </aux>
+      
+      <aux name="Base_Org_Templates_Per_Year">
+        <eqn>0.5</eqn>
+        <units>templates/(organization*year)</units>
+        <doc>Average templates per org per year</doc>
+      </aux>
+      
+      <aux name="Customization_Rate">
+        <eqn>0.80</eqn>
+        <units>dmnl</units>
+        <doc>80% of users customize templates</doc>
+      </aux>
+      
+      <aux name="Average_Accounts_Customized">
+        <eqn>23</eqn>
+        <units>accounts</units>
+        <doc>Average customization per user</doc>
+      </aux>
+      
+      <aux name="Total_Budget_Accounts">
+        <eqn>1000</eqn>
+        <units>accounts</units>
+        <doc>Federal budget broken into 1000 accounts</doc>
+      </aux>
+      
+      <aux name="Emotional_Timing_Boost">
+        <eqn>1.20</eqn>
+        <units>dmnl</units>
+        <doc>+20% from April 15 tax deadline coupling</doc>
+      </aux>
+      
+      <aux name="Base_Political_Engagement">
+        <eqn>1.0</eqn>
+        <units>dmnl</units>
+        <doc>Baseline engagement level</doc>
+      </aux>
+      
+      <aux name="Non_Partisan_Support">
+        <eqn>0.85</eqn>
+        <units>dmnl</units>
+        <doc>85% cross-partisan support from polling</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- PARTICIPATION CALCULATION -->
+      <!-- ============================================ -->
+      
+      <aux name="Time_Poverty_Factor">
+        <eqn>0.85</eqn>
+        <units>dmnl</units>
+        <doc>15% have severe time poverty (multiple jobs, single parents)</doc>
+      </aux>
+      
+      <aux name="Tax_Literacy_Factor">
+        <eqn>0.90</eqn>
+        <units>dmnl</units>
+        <doc>Average across education levels</doc>
+      </aux>
+      
+      <aux name="Digital_Access_Factor">
+        <eqn>0.85</eqn>
+        <units>dmnl</units>
+        <doc>85% have home broadband + computer</doc>
+      </aux>
+      
+      <aux name="Deportation_Fear_Factor">
+        <eqn>0.95</eqn>
+        <units>dmnl</units>
+        <doc>5% severely affected by immigration fears</doc>
+      </aux>
+      
+      <aux name="Years_Since_Launch">
+        <eqn>TIME - 2026</eqn>
+        <units>year</units>
+        <doc>Time since TNV launch</doc>
+      </aux>
+      
+      <aux name="Assistance_Available">
+        <eqn>MIN(1.0, Years_Since_Launch * 0.15)</eqn>
+        <units>dmnl</units>
+        <doc>Community assistance grows 15%/year to 100%</doc>
+      </aux>
+      
+      <aux name="Barrier_Mitigation">
+        <eqn>1.0 + (Assistance_Available * 0.4)</eqn>
+        <units>dmnl</units>
+        <doc>Assistance mitigates barriers up to 40%</doc>
+      </aux>
+      
+      <aux name="Combined_Barriers">
+        <eqn>Time_Poverty_Factor * Tax_Literacy_Factor * Digital_Access_Factor * Deportation_Fear_Factor * Barrier_Mitigation</eqn>
+        <units>dmnl</units>
+        <doc>All barriers combined (note: NOT income - system is proportional!)</doc>
+      </aux>
+      
+      <aux name="Base_Participation">
+        <eqn>Non_Partisan_Support * Base_Political_Engagement * 0.353</eqn>
+        <units>dmnl</units>
+        <doc>Baseline before timing and barriers</doc>
+      </aux>
+      
+      <aux name="Participation_Rate">
+        <eqn>Base_Participation * Emotional_Timing_Boost * Combined_Barriers * Perceived_Efficacy</eqn>
+        <units>dmnl</units>
+        <doc>Final participation rate (proportion of taxpayers)</doc>
+      </aux>
+      
+      <aux name="Tax_Dollar_Submissions">
+        <eqn>US_Taxpayers * Participation_Rate</eqn>
+        <units>people</units>
+        <doc>Number submitting Tax Dollars annually</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- TEMPLATE ECOSYSTEM (R2, R4, R5) -->
+      <!-- ============================================ -->
+      
+      <aux name="Adoption_Per_Template">
+        <eqn>IF Available_Templates > 0 THEN Tax_Dollar_Submissions / Available_Templates ELSE 0</eqn>
+        <units>people/template</units>
+        <doc>Average adoption per template</doc>
+      </aux>
+      
+      <aux name="Adoption_Feedback_Effect">
+        <eqn>1.0 + (Adoption_Per_Template / 50000) * 0.05</eqn>
+        <units>dmnl</units>
+        <doc>Higher adoption incentivizes creation (R2)</doc>
+      </aux>
+      
+      <aux name="Customization_Complexity">
+        <eqn>(Average_Accounts_Customized / Total_Budget_Accounts) * Customization_Rate</eqn>
+        <units>dmnl</units>
+        <doc>Intensity of customization</doc>
+      </aux>
+      
+      <aux name="Diversity_Amplification">
+        <eqn>1.0 + (Customization_Complexity * 2.0)</eqn>
+        <units>dmnl</units>
+        <doc>Customization amplifies creation (R4)</doc>
+      </aux>
+      
+      <aux name="Template_Creation_Rate">
+        <eqn>Number_of_Organizations * Base_Org_Templates_Per_Year * Adoption_Feedback_Effect * Diversity_Amplification</eqn>
+        <units>templates/year</units>
+        <doc>Templates created per year</doc>
+      </aux>
+      
+      <aux name="Base_Advertising_Budget">
+        <eqn>25000000</eqn>
+        <units>dollars/year</units>
+        <doc>$25M baseline across all orgs</doc>
+      </aux>
+      
+      <aux name="Advertising_ROI_Factor">
+        <eqn>0.15</eqn>
+        <units>dmnl</units>
+        <doc>15% ad increase per adoption doubling</doc>
+      </aux>
+      
+      <aux name="Ad_Investment_Multiplier">
+        <eqn>1.0 + (Adoption_Per_Template / 100000) * Advertising_ROI_Factor</eqn>
+        <units>dmnl</units>
+        <doc>Success drives more advertising (R5)</doc>
+      </aux>
+      
+      <aux name="Total_Advertising">
+        <eqn>Base_Advertising_Budget * Ad_Investment_Multiplier</eqn>
+        <units>dollars/year</units>
+        <doc>Total org advertising spending</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- PEOPLES BUDGET (PROPORTIONAL - ALWAYS 100%) -->
+      <!-- ============================================ -->
+      
+      <aux name="Young_Participants_Pct">
+        <eqn>30</eqn>
+        <units>percent</units>
+        <doc>30% young (18-34)</doc>
+      </aux>
+      
+      <aux name="MiddleAge_Participants_Pct">
+        <eqn>50</eqn>
+        <units>percent</units>
+        <doc>50% middle-age (35-64)</doc>
+      </aux>
+      
+      <aux name="Elderly_Participants_Pct">
+        <eqn>20</eqn>
+        <units>percent</units>
+        <doc>20% elderly (65+)</doc>
+      </aux>
+      
+      <aux name="Young_Healthcare_Pref">
+        <eqn>14</eqn>
+        <units>percent</units>
+        <doc>Young allocate 14% to healthcare</doc>
+      </aux>
+      
+      <aux name="MiddleAge_Healthcare_Pref">
+        <eqn>22</eqn>
+        <units>percent</units>
+        <doc>Middle-age allocate 22%</doc>
+      </aux>
+      
+      <aux name="Elderly_Healthcare_Pref">
+        <eqn>35</eqn>
+        <units>percent</units>
+        <doc>Elderly allocate 35% (highest need)</doc>
+      </aux>
+      
+      <aux name="PeoplesBudget_Healthcare">
+        <eqn>(Young_Participants_Pct * Young_Healthcare_Pref + MiddleAge_Participants_Pct * MiddleAge_Healthcare_Pref + Elderly_Participants_Pct * Elderly_Healthcare_Pref) / 100</eqn>
+        <units>percent</units>
+        <doc>Weighted average - ALWAYS part of 100% total</doc>
+      </aux>
+      
+      <aux name="PeoplesBudget_Education">
+        <eqn>(Young_Participants_Pct * 12 + MiddleAge_Participants_Pct * 10 + Elderly_Participants_Pct * 4) / 100</eqn>
+        <units>percent</units>
+        <doc>Young prioritize education</doc>
+      </aux>
+      
+      <aux name="PeoplesBudget_Infrastructure">
+        <eqn>(Young_Participants_Pct * 15 + MiddleAge_Participants_Pct * 13 + Elderly_Participants_Pct * 8) / 100</eqn>
+        <units>percent</units>
+        <doc>All want infrastructure, young most</doc>
+      </aux>
+      
+      <aux name="PeoplesBudget_Defense">
+        <eqn>13</eqn>
+        <units>percent</units>
+        <doc>Relatively stable across demographics</doc>
+      </aux>
+      
+      <aux name="PeoplesBudget_SocialSecurity">
+        <eqn>(Young_Participants_Pct * 8 + MiddleAge_Participants_Pct * 20 + Elderly_Participants_Pct * 26) / 100</eqn>
+        <units>percent</units>
+        <doc>Elderly prioritize highly</doc>
+      </aux>
+      
+      <aux name="PeoplesBudget_Other">
+        <eqn>100 - (PeoplesBudget_Healthcare + PeoplesBudget_Education + PeoplesBudget_Infrastructure + PeoplesBudget_Defense + PeoplesBudget_SocialSecurity)</eqn>
+        <units>percent</units>
+        <doc>Remainder ensures total = 100% (PROPORTIONAL CONSTRAINT)</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- CONGRESSIONAL BUDGET (CONVERGES UNDER PRESSURE) -->
+      <!-- ============================================ -->
+      
+      <aux name="Congress_Healthcare_Initial">
+        <eqn>20</eqn>
+        <units>percent</units>
+        <doc>Starting Congressional allocation</doc>
+      </aux>
+      
+      <aux name="CongressBudget_Healthcare">
+        <eqn>Congress_Healthcare_Initial + (PeoplesBudget_Healthcare - Congress_Healthcare_Initial) * Congressional_Response</eqn>
+        <units>percent</units>
+        <doc>Converges toward People's Budget based on Response</doc>
+      </aux>
+      
+      <aux name="CongressBudget_Education">
+        <eqn>6 + (PeoplesBudget_Education - 6) * Congressional_Response</eqn>
+        <units>percent</units>
+        <doc>Starts at 6%, converges</doc>
+      </aux>
+      
+      <aux name="CongressBudget_Infrastructure">
+        <eqn>8 + (PeoplesBudget_Infrastructure - 8) * Congressional_Response</eqn>
+        <units>percent</units>
+        <doc>Starts at 8%, converges</doc>
+      </aux>
+      
+      <aux name="CongressBudget_Defense">
+        <eqn>18 - (18 - PeoplesBudget_Defense) * Congressional_Response</eqn>
+        <units>percent</units>
+        <doc>Starts high (18%), reduces with pressure</doc>
+      </aux>
+      
+      <aux name="CongressBudget_SocialSecurity">
+        <eqn>23 + (PeoplesBudget_SocialSecurity - 23) * Congressional_Response</eqn>
+        <units>percent</units>
+        <doc>Starts at 23%, converges</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- ERROR CALCULATION -->
+      <!-- ============================================ -->
+      
+      <aux name="Budget_Discrepancy">
+        <eqn>ABS(PeoplesBudget_Healthcare - CongressBudget_Healthcare) + ABS(PeoplesBudget_Education - CongressBudget_Education) + ABS(PeoplesBudget_Infrastructure - CongressBudget_Infrastructure) + ABS(PeoplesBudget_Defense - CongressBudget_Defense) + ABS(PeoplesBudget_SocialSecurity - CongressBudget_SocialSecurity)</eqn>
+        <units>percent</units>
+        <doc>Total error E = Σ|Pi - Ci|</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- MEDIA AND EDUCATION -->
+      <!-- ============================================ -->
+      
+      <aux name="Media_Coverage_Index">
+        <eqn>(Tax_Dollar_Submissions / 1000000) * (Budget_Discrepancy / 10)</eqn>
+        <units>dmnl</units>
+        <doc>Media attention scales with participation and error</doc>
+      </aux>
+      
+      <aux name="Social_Sharing">
+        <eqn>Tax_Dollar_Submissions * 0.3</eqn>
+        <units>people</units>
+        <doc>30% share on social media</doc>
+      </aux>
+      
+      <aux name="Total_Education_Effect">
+        <eqn>(Total_Advertising / 1000000) + Media_Coverage_Index + (Social_Sharing / 1000000)</eqn>
+        <units>dmnl</units>
+        <doc>Combined education reaching taxpayers</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- DUAL PRESSURE MECHANISM -->
+      <!-- ============================================ -->
+      
+      <aux name="Media_Analysis">
+        <eqn>Budget_Discrepancy * Media_Coverage_Index * 0.1</eqn>
+        <units>dmnl</units>
+        <doc>Media highlighting discrepancy</doc>
+      </aux>
+      
+      <aux name="Immediate_Pressure">
+        <eqn>Media_Analysis * Budget_Discrepancy * 0.1</eqn>
+        <units>dmnl</units>
+        <doc>Pressure on proposed budgets</doc>
+      </aux>
+      
+      <aux name="Electoral_Pressure">
+        <eqn>Voter_Awareness * (Budget_Discrepancy ^ 2)</eqn>
+        <units>dmnl</units>
+        <doc>Quadratic electoral pressure (R1 loop)</doc>
+      </aux>
+      
+      <aux name="Response_Threshold">
+        <eqn>0.7</eqn>
+        <units>dmnl</units>
+        <doc>Baseline responsiveness</doc>
+      </aux>
+      
+      <aux name="Target_Response">
+        <eqn>MIN(1.0, MAX(0, (1 - Budget_Discrepancy/100) * Response_Threshold + Electoral_Pressure * 0.001 - Immediate_Pressure * 0.01))</eqn>
+        <units>dmnl</units>
+        <doc>Target Congressional response from dual pressure</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- EFFICACY FEEDBACK (B1 LOOP) -->
+      <!-- ============================================ -->
+      
+      <aux name="Target_Efficacy">
+        <eqn>IF Congressional_Response > 0.7 THEN 0.9 ELSE IF Congressional_Response > 0.5 THEN 0.6 ELSE 0.4</eqn>
+        <units>dmnl</units>
+        <doc>High response builds efficacy, low response erodes</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- DEMOGRAPHIC AWARENESS (R6 LOOP) -->
+      <!-- ============================================ -->
+      
+      <aux name="Dependency_Ratio">
+        <eqn>0.63 + Years_Since_Launch * 0.008</eqn>
+        <units>dmnl</units>
+        <doc>Increases from 0.63 to 0.78 over 20 years</doc>
+      </aux>
+      
+      <aux name="Fiscal_Crisis_Awareness">
+        <eqn>MIN(1.0, MAX(0, (Dependency_Ratio - 0.60) * 2.5))</eqn>
+        <units>dmnl</units>
+        <doc>Awareness grows as demographic crisis approaches</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- AGE-BIAS CORRECTION (B2 LOOP) -->
+      <!-- ============================================ -->
+      
+      <aux name="Elderly_Population_Share">
+        <eqn>20</eqn>
+        <units>percent</units>
+        <doc>Actual elderly population is 20%</doc>
+      </aux>
+      
+      <aux name="Age_Bias">
+        <eqn>Elderly_Participants_Pct - Elderly_Population_Share</eqn>
+        <units>percent</units>
+        <doc>Positive = elderly over-represented</doc>
+      </aux>
+      
+      <aux name="Youth_Dissatisfaction">
+        <eqn>MAX(0, Age_Bias * 0.05)</eqn>
+        <units>dmnl</units>
+        <doc>Youth unhappy when elderly dominate</doc>
+      </aux>
+      
+      <aux name="Youth_Mobilization_Effect">
+        <eqn>Youth_Dissatisfaction * 0.5</eqn>
+        <units>dmnl</units>
+        <doc>Counter-mobilization (B2 balancing)</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- ECONOMIC EGALITARIANISM (R7 LOOP) -->
+      <!-- ============================================ -->
+      
+      <aux name="Campaign_Finance_Disgust">
+        <eqn>0.85</eqn>
+        <units>dmnl</units>
+        <doc>85% concerned about money in politics</doc>
+      </aux>
+      
+      <aux name="Egalitarianism_Awareness">
+        <eqn>MIN(1.0, Media_Coverage_Index * 0.1 * Campaign_Finance_Disgust)</eqn>
+        <units>dmnl</units>
+        <doc>Awareness TNV neutralizes wealth</doc>
+      </aux>
+      
+      <aux name="Populist_Left_Appeal">
+        <eqn>0.45 * (1 + Egalitarianism_Awareness * 0.5)</eqn>
+        <units>dmnl</units>
+        <doc>Left populists support economic democracy</doc>
+      </aux>
+      
+      <aux name="Populist_Right_Appeal">
+        <eqn>0.40 * (1 + Egalitarianism_Awareness * 0.4)</eqn>
+        <units>dmnl</units>
+        <doc>Right populists support anti-elite message</doc>
+      </aux>
+      
+      <aux name="Egalitarianism_Appeal">
+        <eqn>Populist_Left_Appeal + Populist_Right_Appeal</eqn>
+        <units>dmnl</units>
+        <doc>Cross-partisan coalition appeal (R7)</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- DUOPOLY BREAKDOWN (R8 LOOP) -->
+      <!-- ============================================ -->
+      
+      <aux name="District_Budget_Combinations">
+        <eqn>Available_Templates * (Average_Accounts_Customized / 100)</eqn>
+        <units>dmnl</units>
+        <doc>Unique district preferences possible</doc>
+      </aux>
+      
+      <aux name="Custom_Candidates">
+        <eqn>MIN(435, District_Budget_Combinations * 0.1 * (1 - Party_Discipline))</eqn>
+        <units>people</units>
+        <doc>Candidates running on district budgets</doc>
+      </aux>
+      
+      <aux name="Primary_Wins_Per_Cycle">
+        <eqn>Custom_Candidates * (Budget_Discrepancy / 20) * Voter_Awareness</eqn>
+        <units>people/year</units>
+        <doc>Challengers winning with budget data</doc>
+      </aux>
+      
+      <aux name="Discipline_Erosion_Rate">
+        <eqn>Primary_Wins_Per_Cycle * 0.01</eqn>
+        <units>1/year</units>
+        <doc>Each win weakens party discipline (R8)</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- FISCAL SUSTAINABILITY -->
+      <!-- ============================================ -->
+      
+      <aux name="Support_Ratio">
+        <eqn>3.0 - Years_Since_Launch * 0.05</eqn>
+        <units>dmnl</units>
+        <doc>Workers per elderly: 3.0 → 2.0</doc>
+      </aux>
+      
+      <aux name="Federal_Revenue">
+        <eqn>5000000000000 * (1.02 ^ Years_Since_Launch)</eqn>
+        <units>dollars/year</units>
+        <doc>$5T growing 2% annually</doc>
+      </aux>
+      
+      <aux name="Healthcare_Cost_Required">
+        <eqn>2000000000000 * (Dependency_Ratio / 0.63)</eqn>
+        <units>dollars/year</units>
+        <doc>Costs scale with dependency ratio</doc>
+      </aux>
+      
+      <aux name="Healthcare_Allocated">
+        <eqn>(PeoplesBudget_Healthcare / 100) * Federal_Revenue</eqn>
+        <units>dollars/year</units>
+        <doc>People's Budget allocation in dollars</doc>
+      </aux>
+      
+      <aux name="Healthcare_Gap">
+        <eqn>Healthcare_Cost_Required - Healthcare_Allocated</eqn>
+        <units>dollars/year</units>
+        <doc>Deficit if positive, surplus if negative</doc>
+      </aux>
+      
+      <aux name="Fiscal_Sustainability">
+        <eqn>IF Support_Ratio > 2.5 THEN 1.0 ELSE IF Support_Ratio > 2.0 THEN 0.7 ELSE 0.4</eqn>
+        <units>dmnl</units>
+        <doc>Sustainability index (0-1)</doc>
+      </aux>
+      
+      <!-- ============================================ -->
+      <!-- DISPLAY METRICS -->
+      <!-- ============================================ -->
+      
+      <aux name="Participation_Percent">
+        <eqn>Participation_Rate * 100</eqn>
+        <units>percent</units>
+        <doc>Display participation as %</doc>
+      </aux>
+      
+      <aux name="Submissions_Millions">
+        <eqn>Tax_Dollar_Submissions / 1000000</eqn>
+        <units>millions</units>
+        <doc>Display in millions</doc>
+      </aux>
+      
+      <aux name="Congressional_Alignment_Percent">
+        <eqn>Congressional_Response * 100</eqn>
+        <units>percent</units>
+        <doc>Display response as %</doc>
+      </aux>
+      
+      <aux name="Duopoly_Strength">
+        <eqn>Party_Discipline * 100</eqn>
+        <units>percent</units>
+        <doc>100% = strong duopoly, 0% = broken</doc>
+      </aux>
+      
+      <aux name="System_Effectiveness">
+        <eqn>(Participation_Rate * 0.3 + Congressional_Response * 0.4 + Perceived_Efficacy * 0.2 + (1 - Budget_Discrepancy/100) * 0.1) * 100</eqn>
+        <units>percent</units>
+        <doc>Composite system performance</doc>
+      </aux>
+      
+    </variables>
+  </model>
+</xmile>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmile version="1.0" xmlns="http://docs.oasis-open.org/xmile/ns/XMILE/v1.0">
+    <header>
+        <name>Simple Growth Model</name>
+        <vendor>rsedsim</vendor>
+        <product version="0.1.0">rsedsim</product>
+    </header>
+
+    <sim_specs>
+        <start>0</start>
+        <stop>10</stop>
+        <dt>0.1</dt>
+        <time_units>years</time_units>
+    </sim_specs>
+
+    <model>
+        <variables>
+            <stock name="Population">
+                <eqn>100</eqn>
+                <inflow>births</inflow>
+                <units>people</units>
+            </stock>
+
+            <flow name="births">
+                <eqn>Population * growth_rate</eqn>
+                <units>people/year</units>
+            </flow>
+
+            <aux name="growth_rate">
+                <eqn>0.1</eqn>
+                <units>1/year</units>
+            </aux>
+        </variables>
+    </model>
+</xmile>

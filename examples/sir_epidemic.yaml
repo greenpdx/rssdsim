@@ -1,0 +1,56 @@
+model:
+  name: SIR Epidemic Model
+  description: Classic compartmental epidemic model
+
+  time:
+    start: 0
+    stop: 100
+    dt: 0.25
+    units: days
+
+  stocks:
+    - name: Susceptible
+      initial: 990
+      outflows: [infection_rate]
+      units: people
+
+    - name: Infected
+      initial: 10
+      inflows: [infection_rate]
+      outflows: [recovery_rate]
+      units: people
+
+    - name: Recovered
+      initial: 0
+      inflows: [recovery_rate]
+      units: people
+
+  flows:
+    - name: infection_rate
+      equation: contact_rate * infectivity * Susceptible * Infected / total_population
+      units: people/day
+
+    - name: recovery_rate
+      equation: Infected / recovery_time
+      units: people/day
+
+  auxiliaries:
+    - name: total_population
+      equation: Susceptible + Infected + Recovered
+      units: people
+
+  parameters:
+    - name: contact_rate
+      value: 5.0
+      units: contacts/person/day
+      description: Average number of contacts per person per day
+
+    - name: infectivity
+      value: 0.25
+      units: dimensionless
+      description: Probability of transmission per contact
+
+    - name: recovery_time
+      value: 10.0
+      units: days
+      description: Average time to recover from infection

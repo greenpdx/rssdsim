@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmile version="1.0" xmlns="http://docs.oasis-open.org/xmile/ns/XMILE/v1.0">
+    <header>
+        <name>SIR Epidemic Model (XMILE)</name>
+        <vendor>rsedsim</vendor>
+    </header>
+
+    <sim_specs>
+        <start>0</start>
+        <stop>100</stop>
+        <dt>0.25</dt>
+        <time_units>days</time_units>
+    </sim_specs>
+
+    <model>
+        <variables>
+            <stock name="Susceptible">
+                <eqn>990</eqn>
+                <outflow>infection_rate</outflow>
+                <units>people</units>
+            </stock>
+
+            <stock name="Infected">
+                <eqn>10</eqn>
+                <inflow>infection_rate</inflow>
+                <outflow>recovery_rate</outflow>
+                <units>people</units>
+            </stock>
+
+            <stock name="Recovered">
+                <eqn>0</eqn>
+                <inflow>recovery_rate</inflow>
+                <units>people</units>
+            </stock>
+
+            <flow name="infection_rate">
+                <eqn>contact_rate * infectivity * Susceptible * Infected / total_population</eqn>
+                <units>people/day</units>
+            </flow>
+
+            <flow name="recovery_rate">
+                <eqn>Infected / recovery_time</eqn>
+                <units>people/day</units>
+            </flow>
+
+            <aux name="total_population">
+                <eqn>Susceptible + Infected + Recovered</eqn>
+                <units>people</units>
+            </aux>
+
+            <aux name="contact_rate">
+                <eqn>5</eqn>
+                <units>contacts/person/day</units>
+            </aux>
+
+            <aux name="infectivity">
+                <eqn>0.25</eqn>
+                <units>dimensionless</units>
+            </aux>
+
+            <aux name="recovery_time">
+                <eqn>10</eqn>
+                <units>days</units>
+            </aux>
+        </variables>
+    </model>
+</xmile>
