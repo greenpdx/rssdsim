@@ -1,8 +1,8 @@
 [package]
-name = "rsedsim"
+name = "rssdsim"
 version = "0.1.0"
 edition = "2024"
-authors = ["rsedsim contributors"]
+authors = ["Shaun Savage<savages@crmep.com>"]
 description = "A CLI-based system dynamics simulation framework with MCP and A2A protocol support"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/yourusername/rsedsim"
