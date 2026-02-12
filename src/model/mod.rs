@@ -8,12 +8,14 @@ pub mod flow;
 pub mod auxiliary;
 pub mod parameter;
 pub mod expression;
+pub mod dimension;
 
 pub use stock::Stock;
 pub use flow::Flow;
 pub use auxiliary::Auxiliary;
 pub use parameter::Parameter;
 pub use expression::Expression;
+pub use dimension::{Dimension, DimensionManager, SubscriptRef};
 
 /// Time configuration for simulation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +58,8 @@ pub struct Model {
     pub flows: HashMap<String, Flow>,
     pub auxiliaries: HashMap<String, Auxiliary>,
     pub parameters: HashMap<String, Parameter>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub dimensions: HashMap<String, Dimension>,
 }
 
 impl Model {
@@ -71,6 +75,7 @@ impl Model {
             flows: HashMap::new(),
             auxiliaries: HashMap::new(),
             parameters: HashMap::new(),
+            dimensions: HashMap::new(),
         }
     }
 
@@ -103,6 +108,14 @@ impl Model {
             return Err(format!("Parameter '{}' already exists", param.name));
         }
         self.parameters.insert(param.name.clone(), param);
+        Ok(())
+    }
+
+    pub fn add_dimension(&mut self, dimension: Dimension) -> Result<(), String> {
+        if self.dimensions.contains_key(&dimension.name) {
+            return Err(format!("Dimension '{}' already exists", dimension.name));
+        }
+        self.dimensions.insert(dimension.name.clone(), dimension);
         Ok(())
     }
 

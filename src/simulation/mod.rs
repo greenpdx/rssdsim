@@ -5,9 +5,11 @@ use crate::model::Model;
 
 pub mod engine;
 pub mod integrator;
+pub mod arrayvalue;
 
 pub use engine::SimulationEngine;
 pub use integrator::{Integrator, EulerIntegrator};
+pub use arrayvalue::{ArrayValue, ArraySimulationState};
 
 /// Simulation state at a point in time
 #[derive(Debug, Clone)]

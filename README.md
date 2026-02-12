@@ -1,32 +1,34 @@
-# rsedsim - Rust System Dynamics Simulator
+# rssdsim - Rust System Dynamics Simulator
 
-A comprehensive CLI-based system dynamics simulation framework with support for hybrid stock/flow-agent models, multi-dimensional variables, and modern protocol integration (MCP & A2A).
+A high-performance CLI-based system dynamics simulation framework with comprehensive file format support and extensible architecture.
 
 ## Features
 
 ### Core Simulation Capabilities
 - **Stock-Flow Modeling**: Traditional system dynamics with stocks, flows, auxiliaries, and parameters
-- **Agent-Based Modeling**: Individual agents with behaviors and attributes
-- **Hybrid Models**: Seamless integration of SD and ABM paradigms
-- **Multi-dimensional Variables**: Full support for vectors, arrays, and tensor variables with subscripts
-- **Multiple Integration Methods**: Euler, RK4, RK45 (adaptive), Heun, Backward Euler
+- **Expression Evaluation**: Full equation parsing with 47+ built-in functions
+- **Multiple Integration Methods**: Euler and RK4 (Runge-Kutta 4th order)
+- **Model Validation**: Structural validation and dependency checking
+- **Parameter Overrides**: Runtime parameter modification
 
-### Advanced Features
-- **Built-in Functions**: Complete SD function library (delays, lookups, statistics, time functions)
-- **Sensitivity Analysis**: Parameter sweeps, Monte Carlo, Latin Hypercube sampling
-- **Model Analysis**: Loop dominance, structural analysis, equilibrium finding
-- **Units Checking**: Dimensional analysis for model validation
-- **Stochastic Elements**: White noise, pink noise, Poisson processes
-
-### Protocol Integration
-- **MCP (Model Context Protocol)**: AI agent integration for LLM-driven simulation
-- **A2A (Agent-to-Agent)**: Distributed agent communication and coordination
+### Built-in Functions
+Complete function library including:
+- **Math**: MIN, MAX, ABS, SQRT, EXP, LN, LOG, LOG10, POW, MODULO
+- **Trigonometric**: SIN, COS, TAN, ASIN, ACOS, ATAN
+- **Rounding**: FLOOR, CEIL, ROUND
+- **System Dynamics**: PULSE, STEP, RAMP, TIME
+- **Logic**: IF-THEN-ELSE conditionals
+- **Operators**: Arithmetic (+, -, *, /, ^), comparison (>, <, >=, <=, ==, !=)
 
 ### Data I/O
 - **Input Formats**: JSON, YAML, XMILE (Stella/Vensim compatible), InsightMaker
-- **Output Formats**: CSV, JSON, NetCDF/HDF5 (for large datasets)
-- **Interoperability**: Import/export models from commercial SD tools
-- **Supported Extensions**: `.json`, `.yaml`, `.yml`, `.xmile`, `.stmx` (Stella), `.itmx`, `.xml`
+- **Output Formats**: CSV with time-series data
+- **Interoperability**: Import models from commercial SD tools (Stella, Vensim, InsightMaker)
+- **Supported Extensions**: `.json`, `.yaml`, `.yml`, `.xmile`, `.stmx` (Stella), `.itmx`
+
+### Protocol Foundations (In Development)
+- **MCP (Model Context Protocol)**: Framework for AI agent integration (message structures defined)
+- **A2A (Agent-to-Agent)**: Framework for distributed agent communication (protocol design complete)
 
 ## Quick Start
 
@@ -34,8 +36,8 @@ A comprehensive CLI-based system dynamics simulation framework with support for 
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/rsedsim
-cd rsedsim
+git clone https://github.com/greenpdx/rssdsim
+cd rssdsim
 
 # Build the project
 cargo build --release
@@ -48,22 +50,19 @@ cargo install --path .
 
 ```bash
 # Run a simulation
-rsedsim run model.json -o results.csv
+rssdsim run model.json -o results.csv
 
 # Run with parameter overrides
-rsedsim run model.json -p "contact_rate=10,infectivity=0.3"
+rssdsim run model.json -p "contact_rate=10,infectivity=0.3"
 
-# Sensitivity analysis
-rsedsim sensitivity model.json -v contact_rate -r 1:10:0.5
+# Specify integration method
+rssdsim run model.json --integrator rk4
 
-# Monte Carlo simulation
-rsedsim monte-carlo model.json -n 1000 -o mc_results/
+# Validate model structure
+rssdsim validate model.json
 
-# Convert model formats
-rsedsim convert model.xmile -f json -o model.json
-
-# Validate model
-rsedsim validate model.json --check-units --check-bounds
+# Show version and info
+rssdsim info
 ```
 
 ## Example Model
@@ -174,90 +173,85 @@ model:
     duration: 5.0
 ```
 
-## Documentation
-
-- [Quick Start](QUICKSTART.md) - Get running in 5 minutes
-- [Architecture Guide](ARCHITECTURE.md) - Detailed system architecture
-- [Format Support](FORMAT_SUPPORT.md) - All supported file formats
-- [API Documentation](docs/API.md) - Complete API reference
-- [Protocol Integration](docs/PROTOCOLS.md) - MCP and A2A integration guide
-- [Tutorial](docs/TUTORIAL.md) - Step-by-step getting started
-- [Examples](docs/EXAMPLES.md) - Model examples and use cases
-
 ## Project Structure
 
 ```
-rsedsim/
+rssdsim/
 ├── src/
-│   ├── main.rs              # CLI entry point
-│   ├── model/               # Model definition
+│   ├── main.rs              # CLI entry point and command handling
+│   ├── model/               # Model definition and expression evaluation
+│   │   ├── mod.rs           # Core model structures
+│   │   ├── expression.rs    # Expression parser and evaluator
+│   │   └── dimension.rs     # Multi-dimensional array support (framework)
 │   ├── simulation/          # Simulation engine
-│   ├── agent/               # Agent-based components
-│   ├── array/               # Multi-dimensional support
+│   │   ├── mod.rs           # Simulation state and engine
+│   │   ├── integrator.rs    # Euler and RK4 integrators
+│   │   └── arrayvalue.rs    # Array value types (framework)
 │   ├── io/                  # Data I/O
-│   ├── functions/           # Built-in functions
-│   ├── cli/                 # CLI commands
-│   └── protocol/            # MCP & A2A protocols
-│       ├── mcp.rs           # Model Context Protocol
-│       └── a2a.rs           # Agent-to-Agent Protocol
+│   │   ├── parser.rs        # JSON/YAML parser
+│   │   ├── xmile.rs         # XMILE format parser
+│   │   ├── insightmaker.rs  # InsightMaker format parser
+│   │   └── writer.rs        # CSV output writer
+│   └── protocol/            # Protocol frameworks (in development)
+│       ├── mcp.rs           # Model Context Protocol framework
+│       └── a2a.rs           # Agent-to-Agent Protocol framework
 ├── docs/                    # Documentation
 ├── examples/                # Example models
 └── tests/                   # Integration tests
 ```
 
-## Protocol Integration
-
-### MCP (Model Context Protocol)
-
-Enable AI agents to interact with simulations:
-
-```bash
-# Start MCP server on stdio
-rsedsim mcp serve --stdio
-
-# Start MCP server on HTTP
-rsedsim mcp serve --http localhost:3000
-```
-
-MCP exposes tools for:
-- Running simulations
-- Analyzing model structure
-- Sensitivity analysis
-- Querying results
-
-### A2A (Agent-to-Agent Protocol)
-
-Enable distributed agent communication:
-
-```yaml
-hybrid_model:
-  a2a_config:
-    node_id: "sim1:population"
-    transport: udp
-    bind_addr: "0.0.0.0:5000"
-    peers:
-      - "192.168.1.10:5000"
-      - "192.168.1.11:5000"
-```
-
 ## Roadmap
 
+### Completed
 - [x] Core SD simulation engine
-- [x] MCP protocol stub
-- [x] A2A protocol stub
+- [x] Euler integration method
+- [x] RK4 (Runge-Kutta 4th order) integration
+- [x] Expression evaluation with 47+ built-in functions
 - [x] XMILE parser (Stella/Vensim compatible)
 - [x] InsightMaker format support
-- [x] Expression evaluation
-- [x] Multiple integrators (Euler, RK4)
-- [ ] Complete RK4 implementation
-- [ ] Built-in function library (delays, lookups)
-- [ ] Multi-dimensional variables (arrays/subscripts)
-- [ ] Hybrid SD-ABM models
-- [ ] Sensitivity analysis tools
+- [x] JSON/YAML model format support
+- [x] CSV output writer
+- [x] Parameter override at runtime
+- [x] Model validation tools
+- [x] Dimension/Array framework (data structures complete)
+- [x] MCP protocol framework (message structures)
+- [x] A2A protocol framework (message structures)
+
+### In Progress
+- [ ] Multi-dimensional variables integration (connect array framework to engine)
+- [ ] MCP transport layer (stdio and HTTP)
+- [ ] A2A network layer (UDP transport)
+
+### Planned
+- [ ] RK45 adaptive integration
+- [ ] Heun and Backward Euler integrators
+- [ ] Delay functions (DELAY, SMOOTH)
+- [ ] Lookup table functions
+- [ ] Stochastic elements (white noise, pink noise, Poisson processes)
+- [ ] Sensitivity analysis tools (parameter sweeps, LHS)
 - [ ] Monte Carlo simulation
+- [ ] Agent-based modeling components
+- [ ] Units checking and dimensional analysis
+- [ ] Model analysis (loop dominance, structural analysis)
+- [ ] NetCDF/HDF5 output for large datasets
 - [ ] Optimization algorithms
 - [ ] GUI frontend (web-based)
 - [ ] Cloud deployment support
+
+## Development Status
+
+**Production Ready:**
+- Core stock-flow system dynamics simulation
+- Model loading from multiple file formats
+- Expression evaluation and built-in functions
+- Basic validation and error checking
+
+**Experimental:**
+- MCP and A2A protocol frameworks (message structures only, no transport)
+- Multi-dimensional array support (data structures exist but not integrated into engine)
+
+**Not Yet Implemented:**
+Features mentioned in roadmap under "Planned" are not yet available. The CLI currently supports only `run`, `validate`, and `info` commands.
 
 ## Contributing
 
@@ -274,10 +268,10 @@ at your option.
 
 ## Citation
 
-If you use rsedsim in academic work, please cite:
+If you use rssdsim in academic work, please cite:
 
 ```bibtex
-@software{rsedsim2024,
+@software{rssdsim2024,
   title = {rssdsim: Rust System Dynamics Simulator},
   author = {Shaun Savage},
   year = {2024},

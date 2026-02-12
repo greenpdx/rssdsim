@@ -1,0 +1,471 @@
+RSSDSIM ARCHITECTURE DIAGRAMS
+==============================
+
+## 1. MODULE DEPENDENCY DIAGRAM
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        main.rs (CLI)                        │
+│              clap, colored, error handling                  │
+└───────────────┬─────────────────────────────────────────────┘
+                │
+    ┌───────────┴──────────────┬──────────────┬────────────────┐
+    │                          │              │                │
+    v                          v              v                v
+┌─────────────┐      ┌──────────────────┐  ┌────────────────────┐
+│  io module  │      │  model module    │  │ simulation module  │
+│             │      │                  │  │                    │
+│ Load/Save   │      │ Define SD model  │  │ Execute model      │
+│ JSON/YAML   │      │ Stocks/Flows/    │  │ Euler/RK4          │
+│ XMILE/IM    │      │ Auxiliaries/Pars │  │ State tracking     │
+└─────────────┘      └──────────────────┘  └────────────────────┘
+                              │                      ^
+                              │ Expression          │
+                              │ evaluation          │
+                              v                      │
+                     ┌──────────────────┐           │
+                     │ expression.rs    │───────────┘
+                     │                  │
+                     │ Parser & eval    │
+                     └──────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│              protocol module (stubs)                        │
+│            MCP, A2A (not yet implemented)                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 2. EXPRESSION PARSING PIPELINE
+
+```
+Input: "Population * (birth_rate + death_rate)"
+  |
+  v
+┌─────────────────────────────────┐
+│ Tokenization & Initial Parse    │
+└─────────────────────────────────┘
+  |
+  v
+┌──────────────────────────────────────┐
+│ Recursive Descent Parser             │
+│ 1. Try constants (42, 3.14)          │
+│ 2. Try conditionals (IF THEN ELSE)   │
+│ 3. Try comparisons (>, <, >=, <=)    │
+│ 4. Try + / -                         │
+│ 5. Try * / /                         │
+│ 6. Try ^                             │
+│ 7. Handle parentheses                │
+│ 8. Handle function calls             │
+│ 9. Handle unary minus                │
+│ 10. Fall back to variable name       │
+└──────────────────────────────────────┘
+  |
+  v
+┌────────────────────────────────────┐
+│ Expression Tree Built:             │
+│                                    │
+│       BinaryOp(*)                  │
+│       /            \               │
+│   Variable      BinaryOp(+)        │
+│   "Population"  /        \         │
+│            Variable  Variable      │
+│            "birth"   "death"       │
+│            "rate"    "rate"        │
+└────────────────────────────────────┘
+  |
+  v
+During Simulation:
+  Evaluate with EvaluationContext
+  (model, state, current_time)
+```
+
+## 3. SIMULATION EXECUTION FLOW
+
+```
+START
+  |
+  v
+┌─────────────────────────────────┐
+│ Load Model                      │
+│ (JSON/YAML/XMILE/InsightMaker) │
+└─────────────────────────────────┘
+  |
+  v
+┌─────────────────────────────────┐
+│ Parse Expressions               │
+│ (all equations)                 │
+└─────────────────────────────────┘
+  |
+  v
+┌─────────────────────────────────┐
+│ Initialize SimulationState      │
+│ - Evaluate stock initial values │
+│ - Set flows = 0.0              │
+│ - Set auxiliaries = 0.0        │
+└─────────────────────────────────┘
+  |
+  v
+┌─────────────────────────────────┐
+│ Main Simulation Loop            │
+│ while time < stop_time          │
+└─────────────────────────────────┘
+  |
+  +─────────────────────────────────────────┐
+  |                                         |
+  v                                         v
+┌──────────────────────────────┐  ┌────────────────┐
+│ Integration Step (Euler)     │  │ Integration    │
+│                              │  │ Step (RK4)     │
+│ 1. Eval auxiliaries (FP)     │  │                │
+│ 2. Eval flows               │  │ 1. Stage 1     │
+│ 3. Compute derivatives      │  │ 2. Stage 2     │
+│ 4. new_stock = old_stock +  │  │ 3. Stage 3     │
+│    derivative * dt          │  │ 4. Stage 4     │
+│ 5. Apply constraints        │  │ 5. Combine     │
+│                              │  │ 6. Apply       │
+│                              │  │    constraints │
+└──────────────────────────────┘  └────────────────┘
+  |                                         |
+  +─────────────────────────────────────────+
+  |
+  v
+┌─────────────────────────────────┐
+│ Record Results                  │
+│ (if output interval reached)    │
+└─────────────────────────────────┘
+  |
+  v
+┌──────────────────────────────────┐
+│ time > stop_time?                │
+│ (loop condition check)           │
+└──────────────────────────────────┘
+  |
+  +─── NO ──> back to loop
+  |
+  +─── YES ──> v
+               |
+               v
+            ┌───────────────────────────┐
+            │ Write Results to CSV       │
+            │ (time, all variables)     │
+            └───────────────────────────┘
+               |
+               v
+            DONE
+```
+
+## 4. INTEGRATION STEP DETAIL (EULER)
+
+```
+Input: model, state(t), dt
+
+Step 1: Evaluate Auxiliaries
+┌─────────────────────────────────────────┐
+│ for pass = 0 to MAX_PASSES (20):        │
+│   for each auxiliary a:                 │
+│     new_val = evaluate(a.equation)      │
+│     if |new_val - old_val| > 1e-10:     │
+│       changed = true                    │
+│   if not changed && not errors:         │
+│     break  (converged)                  │
+└─────────────────────────────────────────┘
+  |
+  v
+Step 2: Evaluate Flows
+┌─────────────────────────────────────────┐
+│ for each flow f:                        │
+│   new_flow = evaluate(f.equation)       │
+│   (uses current auxiliaries)            │
+└─────────────────────────────────────────┘
+  |
+  v
+Step 3: Compute Stock Derivatives
+┌─────────────────────────────────────────┐
+│ for each stock s:                       │
+│   derivative = 0                        │
+│   for each inflow f in s.inflows:       │
+│     derivative += flows[f]              │
+│   for each outflow f in s.outflows:     │
+│     derivative -= flows[f]              │
+│   derivatives[s] = derivative           │
+└─────────────────────────────────────────┘
+  |
+  v
+Step 4: Apply Euler Formula
+┌─────────────────────────────────────────┐
+│ for each stock s:                       │
+│   new_value = old_value +               │
+│               derivative * dt           │
+│   if s.non_negative:                    │
+│     new_value = max(new_value, 0.0)     │
+│   if s.max_value:                       │
+│     new_value = min(new_value, max)     │
+│   state.stocks[s] = new_value           │
+└─────────────────────────────────────────┘
+  |
+  v
+Step 5: Return New State
+┌─────────────────────────────────────────┐
+│ state(t+dt) with:                       │
+│ - time += dt                            │
+│ - stocks updated                        │
+│ - flows computed                        │
+│ - auxiliaries converged                 │
+└─────────────────────────────────────────┘
+
+Output: state(t+dt)
+```
+
+## 5. RK4 STAGES (Runge-Kutta 4th Order)
+
+```
+Starting state: y(t) = y_n
+
+                    System Evaluation
+Stage 1             (auxiliaries + flows)
+┌─────────────┐
+│ t = t_n     │────────────────────> k1 = f(y_n)
+│ y = y_n     │
+└─────────────┘
+
+Stage 2
+┌─────────────┐
+│ t = t + dt/2│────────────────────> k2 = f(y + k1*dt/2)
+│ y = y + k1  │
+│    *dt/2    │
+└─────────────┘
+
+Stage 3
+┌─────────────┐
+│ t = t + dt/2│────────────────────> k3 = f(y + k2*dt/2)
+│ y = y + k2  │
+│    *dt/2    │
+└─────────────┘
+
+Stage 4
+┌─────────────┐
+│ t = t + dt  │────────────────────> k4 = f(y + k3*dt)
+│ y = y + k3  │
+│    *dt      │
+└─────────────┘
+
+Final Step:
+y(t+dt) = y(t) + (k1 + 2*k2 + 2*k3 + k4) * dt/6
+          └─────────────────┬─────────────────┘
+                     Weighted Average
+```
+
+## 6. DATA FLOW IN SIMULATION STATE
+
+```
+┌─────────────────────────────────┐
+│   SimulationState at time t     │
+├─────────────────────────────────┤
+│ time: 5.2                       │
+│ stocks: {                       │
+│   "Population" -> 150.0         │
+│   "Infected" -> 23.5            │
+│ }                               │
+│ flows: {                        │
+│   "births" -> 15.0              │
+│   "infection" -> 2.1            │
+│ }                               │
+│ auxiliaries: {                  │
+│   "infection_rate" -> 0.15      │
+│   "contact_rate" -> 0.08        │
+│ }                               │
+└─────────────────────────────────┘
+         │
+         │ During Evaluation
+         v
+┌─────────────────────────────────┐
+│   EvaluationContext             │
+├─────────────────────────────────┤
+│ model: &Model                   │
+│ state: &SimulationState         │
+│ time: f64                       │
+└─────────────────────────────────┘
+         │
+         │ Variable Lookup
+         v
+    Priority Order:
+    1. TIME (special) -> 5.2
+    2. Parameters -> model.parameters
+    3. Stocks -> state.stocks
+    4. Flows -> state.flows
+    5. Auxiliaries -> state.auxiliaries
+```
+
+## 7. CLASS DIAGRAM (Key Types)
+
+```
+┌──────────────────┐
+│     Model        │
+├──────────────────┤
+│ metadata         │
+│ time             │
+│ stocks           │──┐
+│ flows            │  │
+│ auxiliaries      │  │
+│ parameters       │  │
+└──────────────────┘  │
+         │            │
+         │            v
+         │    ┌───────────────────┐
+         │    │     Stock         │
+         │    ├───────────────────┤
+         │    │ name: String      │
+         │    │ initial: Expr     │
+         │    │ inflows: Vec      │
+         │    │ outflows: Vec     │
+         │    │ non_negative: bool│
+         │    │ max_value: Option │
+         │    └───────────────────┘
+         │
+         │    ┌───────────────────┐
+         │    │    Flow           │
+         │    ├───────────────────┤
+         │    │ name: String      │
+         │    │ equation: Expr    │
+         │    └───────────────────┘
+         │
+         │    ┌───────────────────┐
+         │    │   Auxiliary       │
+         │    ├───────────────────┤
+         │    │ name: String      │
+         │    │ equation: Expr    │
+         │    └───────────────────┘
+         │
+         │    ┌───────────────────┐
+         │    │   Parameter       │
+         │    ├───────────────────┤
+         │    │ name: String      │
+         │    │ value: f64        │
+         │    └───────────────────┘
+
+┌──────────────────────────────┐
+│    Expression (enum)         │
+├──────────────────────────────┤
+│ Constant(f64)                │
+│ Variable(String)             │
+│ BinaryOp {op, left, right}   │
+│ UnaryOp {op, expr}           │
+│ FunctionCall {name, args}    │
+│ Conditional {cond, true, f}  │
+└──────────────────────────────┘
+
+┌──────────────────────────────┐
+│   SimulationState            │
+├──────────────────────────────┤
+│ time: f64                    │
+│ stocks: HashMap<String, f64> │
+│ flows: HashMap<String, f64>  │
+│ auxiliaries: HashMap<...>    │
+└──────────────────────────────┘
+
+┌──────────────────────────────┐
+│    Integrator (trait)        │
+├──────────────────────────────┤
+│ step(model, state, dt) -> Result
+└──────────────────────────────┘
+         ^
+         │
+    ┌────┴─────┐
+    │           │
+ ┌──────┐  ┌────────┐
+ │Euler │  │  RK4   │
+ └──────┘  └────────┘
+```
+
+## 8. FUNCTION CALL RESOLUTION
+
+```
+Expression: "MIN(Population, max_capacity)"
+     |
+     v
+FunctionCall {
+  name: "MIN"
+  args: [Variable("Population"), Variable("max_capacity")]
+}
+     |
+     v
+evaluate_function("MIN", [...], context)
+     |
+     v
+┌─────────────────────────────────────┐
+│ arg_values = [                      │
+│   context.get_variable("Population")│
+│   context.get_variable("max_cap")   │
+│ ]                                   │
+│ = [150.0, 200.0]                    │
+└─────────────────────────────────────┘
+     |
+     v
+match "MIN".to_uppercase() {
+  "MIN" => arg_values.iter()
+           .fold(f64::INFINITY, f64::min)
+}
+     |
+     v
+Result: 150.0
+```
+
+## 9. VARIABLE RESOLUTION STACK
+
+```
+Expression: "Population * (1 + growth_rate)"
+     |
+     v
+During Evaluation:
+     |
+     +─> Variable("Population")
+     |     |
+     |     v get_variable("Population")
+     |       |
+     |       1. parameters? NO
+     |       2. stocks["Population"]? YES -> 100.0
+     |       |
+     |       v return 100.0
+     |
+     +─> Variable("growth_rate")
+           |
+           v get_variable("growth_rate")
+             |
+             1. parameters["growth_rate"]? YES -> 0.05
+             |
+             v return 0.05
+
+Result: 100.0 * (1 + 0.05) = 105.0
+```
+
+## 10. AUXILIARY CONVERGENCE (FIXED-POINT ITERATION)
+
+```
+Initial auxiliaries: {}
+
+Pass 0:
+  rate = birth_rate + death_rate
+  => rate = 0.05 + (-0.02) = 0.03
+  Change: 0.03 (new)
+
+Pass 1:
+  rate = birth_rate + death_rate
+  => rate = 0.05 + (-0.02) = 0.03
+  Change: 0.0 (no change detected)
+  
+Converged! Break out of loop
+
+┌─────────────────────────────────┐
+│ With Dependencies:              │
+│                                 │
+│ Pass 0: a = b + 1   (b missing) │
+│ Pass 1: a = 2 + 1 = 3           │
+│         b = a + 1 = 4           │
+│ Pass 2: a = 4 + 1 = 5           │
+│         b = 5 + 1 = 6           │
+│ Pass 3: a = 6 + 1 = 7           │
+│         b = 7 + 1 = 8           │
+│ ... until convergence or error  │
+└─────────────────────────────────┘
+```
+
