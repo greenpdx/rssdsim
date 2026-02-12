@@ -278,10 +278,10 @@ If you use rsedsim in academic work, please cite:
 
 ```bibtex
 @software{rsedsim2024,
-  title = {rsedsim: Rust System Dynamics Simulator},
-  author = {rsedsim contributors},
+  title = {rssdsim: Rust System Dynamics Simulator},
+  author = {Shaun Savage},
   year = {2024},
-  url = {https://github.com/yourusername/rsedsim}
+  url = {https://github.com/greenpdx/rssdsim}
 }
 ```
 
