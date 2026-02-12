@@ -9,6 +9,7 @@ pub mod auxiliary;
 pub mod parameter;
 pub mod expression;
 pub mod dimension;
+pub mod units;
 
 pub use stock::Stock;
 pub use flow::Flow;
@@ -16,6 +17,7 @@ pub use auxiliary::Auxiliary;
 pub use parameter::Parameter;
 pub use expression::Expression;
 pub use dimension::{Dimension, DimensionManager, SubscriptRef};
+pub use units::{DimensionalFormula, UnitChecker, BaseDimension};
 
 /// Time configuration for simulation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +62,8 @@ pub struct Model {
     pub parameters: HashMap<String, Parameter>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub dimensions: HashMap<String, Dimension>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub lookups: HashMap<String, crate::simulation::LookupTable>,
 }
 
 impl Model {
@@ -76,6 +80,7 @@ impl Model {
             auxiliaries: HashMap::new(),
             parameters: HashMap::new(),
             dimensions: HashMap::new(),
+            lookups: HashMap::new(),
         }
     }
 
@@ -116,6 +121,14 @@ impl Model {
             return Err(format!("Dimension '{}' already exists", dimension.name));
         }
         self.dimensions.insert(dimension.name.clone(), dimension);
+        Ok(())
+    }
+
+    pub fn add_lookup(&mut self, lookup: crate::simulation::LookupTable) -> Result<(), String> {
+        if self.lookups.contains_key(&lookup.name) {
+            return Err(format!("Lookup table '{}' already exists", lookup.name));
+        }
+        self.lookups.insert(lookup.name.clone(), lookup);
         Ok(())
     }
 

@@ -11,6 +11,7 @@ mod protocol;
 mod model;
 mod simulation;
 mod io;
+mod analysis;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;

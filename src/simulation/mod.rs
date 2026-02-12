@@ -6,10 +6,20 @@ use crate::model::Model;
 pub mod engine;
 pub mod integrator;
 pub mod arrayvalue;
+pub mod delay;
+pub mod lookup;
+pub mod stochastic;
+pub mod abm;
+pub mod agent_sd_bridge;
 
 pub use engine::SimulationEngine;
-pub use integrator::{Integrator, EulerIntegrator};
+pub use integrator::{Integrator, EulerIntegrator, RK4Integrator, HeunIntegrator, BackwardEulerIntegrator};
 pub use arrayvalue::{ArrayValue, ArraySimulationState};
+pub use delay::DelayManager;
+pub use lookup::LookupTable;
+pub use stochastic::StochasticManager;
+pub use abm::{AgentManager, AgentType, AgentState, AgentRule};
+pub use agent_sd_bridge::{AgentSDBridge, AgentSDConfig, AgentCoupling, SpatialAgent, AgentNetwork};
 
 /// Simulation state at a point in time
 #[derive(Debug, Clone)]
@@ -18,6 +28,9 @@ pub struct SimulationState {
     pub stocks: HashMap<String, f64>,
     pub flows: HashMap<String, f64>,
     pub auxiliaries: HashMap<String, f64>,
+    pub delays: DelayManager,
+    pub stochastic: StochasticManager,
+    pub agents: AgentManager,
 }
 
 impl SimulationState {
@@ -27,6 +40,9 @@ impl SimulationState {
             stocks: HashMap::new(),
             flows: HashMap::new(),
             auxiliaries: HashMap::new(),
+            delays: DelayManager::new(),
+            stochastic: StochasticManager::new(),
+            agents: AgentManager::new(),
         }
     }
 
@@ -36,12 +52,19 @@ impl SimulationState {
 
         // Initialize stocks with their initial values
         for (name, stock) in &model.stocks {
-            let initial_value = stock.initial.evaluate(&crate::model::expression::EvaluationContext {
+            // Need to clone state for evaluation since evaluate requires &mut
+            let mut temp_state = state.clone();
+            let mut context = crate::model::expression::EvaluationContext::new(
                 model,
-                state: &state,
-                time: model.time.start,
-            })?;
+                &mut temp_state,
+                model.time.start,
+            );
+            let initial_value = stock.initial.evaluate(&mut context)?;
             state.stocks.insert(name.clone(), initial_value);
+            // Merge back any state changes (though initial values shouldn't have delays/random/agents)
+            state.delays = temp_state.delays;
+            state.stochastic = temp_state.stochastic;
+            state.agents = temp_state.agents;
         }
 
         // Initialize flows to zero

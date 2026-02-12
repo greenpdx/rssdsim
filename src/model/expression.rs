@@ -469,7 +469,7 @@ impl Expression {
     }
 
     /// Evaluate expression given a context
-    pub fn evaluate(&self, context: &EvaluationContext) -> Result<f64, String> {
+    pub fn evaluate(&self, context: &mut EvaluationContext) -> Result<f64, String> {
         match self {
             Expression::Constant(val) => Ok(*val),
 
@@ -529,7 +529,7 @@ impl Expression {
         }
     }
 
-    fn evaluate_function(name: &str, args: &[Expression], context: &EvaluationContext) -> Result<f64, String> {
+    fn evaluate_function(name: &str, args: &[Expression], context: &mut EvaluationContext) -> Result<f64, String> {
         let arg_values: Result<Vec<f64>, String> = args
             .iter()
             .map(|arg| arg.evaluate(context))
@@ -765,6 +765,174 @@ impl Expression {
                 Ok(context.time)
             }
 
+            // Delay functions
+            "DELAY1" | "SMOOTH" => {
+                // DELAY1(input, delay_time) or DELAY1(input, delay_time, initial)
+                if arg_values.len() < 2 || arg_values.len() > 3 {
+                    return Err(format!("{} expects 2 or 3 arguments, got {}", name, arg_values.len()));
+                }
+                let input = arg_values[0];
+                let delay_time = arg_values[1];
+                let initial = if arg_values.len() == 3 {
+                    arg_values[2]
+                } else {
+                    input
+                };
+
+                // Create unique key for this delay
+                let key = format!("{}_{}", name, args.iter().map(|a| format!("{}", a)).collect::<Vec<_>>().join("_"));
+
+                let delay = context.state.delays.get_or_create_exponential(&key, initial, delay_time, 1);
+                Ok(delay.get_value())
+            }
+
+            "DELAY3" => {
+                // DELAY3(input, delay_time) or DELAY3(input, delay_time, initial)
+                if arg_values.len() < 2 || arg_values.len() > 3 {
+                    return Err(format!("DELAY3 expects 2 or 3 arguments, got {}", arg_values.len()));
+                }
+                let input = arg_values[0];
+                let delay_time = arg_values[1];
+                let initial = if arg_values.len() == 3 {
+                    arg_values[2]
+                } else {
+                    input
+                };
+
+                let key = format!("DELAY3_{}", args.iter().map(|a| format!("{}", a)).collect::<Vec<_>>().join("_"));
+
+                let delay = context.state.delays.get_or_create_exponential(&key, initial, delay_time, 3);
+                Ok(delay.get_value())
+            }
+
+            "DELAYP" => {
+                // DELAYP(input, delay_time, initial)
+                if arg_values.len() != 3 {
+                    return Err(format!("DELAYP expects 3 arguments, got {}", arg_values.len()));
+                }
+                let input = arg_values[0];
+                let delay_time = arg_values[1];
+                let initial = arg_values[2];
+
+                let key = format!("DELAYP_{}", args.iter().map(|a| format!("{}", a)).collect::<Vec<_>>().join("_"));
+
+                let delay = context.state.delays.get_or_create_pipeline(&key, initial, delay_time);
+                Ok(delay.get_delayed_value(context.time))
+            }
+
+            // Lookup functions
+            "LOOKUP" => {
+                // LOOKUP(lookup_table_name, x)
+                if arg_values.len() != 2 {
+                    return Err(format!("LOOKUP expects 2 arguments, got {}", arg_values.len()));
+                }
+
+                // First argument should be a constant that represents the lookup table name
+                // For now, we'll use a workaround - the table name is embedded in the function call
+                // Better: LOOKUP("TableName", x) where first arg is parsed as string
+                // For implementation, we expect: LOOKUP(table_index, x) where table_index refers to a parameter
+
+                // This is a simplified implementation - in practice, you'd want to support string arguments
+                Err("LOOKUP function requires direct lookup table reference - use WITH_LOOKUP instead".to_string())
+            }
+
+            "WITH_LOOKUP" => {
+                // WITH_LOOKUP(x, (x1,y1), (x2,y2), ...)
+                // This is a simplified inline lookup - user provides data points directly
+                // For example: WITH_LOOKUP(TIME, 0,0, 10,100, 20,50)
+                // Pairs of values represent (x,y) points
+
+                if arg_values.len() < 3 || arg_values.len() % 2 != 1 {
+                    return Err("WITH_LOOKUP expects odd number of arguments: x, x1, y1, x2, y2, ...".to_string());
+                }
+
+                let x = arg_values[0];
+                let mut points: Vec<(f64, f64)> = Vec::new();
+
+                for i in (1..arg_values.len()).step_by(2) {
+                    points.push((arg_values[i], arg_values[i + 1]));
+                }
+
+                // Create temporary lookup table
+                let table = crate::simulation::LookupTable::new("inline".to_string(), points)?;
+                Ok(table.lookup(x))
+            }
+
+            // Stochastic functions
+            "RANDOM" => {
+                // RANDOM() - uniform [0, 1)
+                if !arg_values.is_empty() {
+                    return Err(format!("RANDOM expects 0 arguments, got {}", arg_values.len()));
+                }
+                Ok(context.state.stochastic.random())
+            }
+
+            "UNIFORM" => {
+                // UNIFORM(min, max)
+                if arg_values.len() != 2 {
+                    return Err(format!("UNIFORM expects 2 arguments, got {}", arg_values.len()));
+                }
+                Ok(context.state.stochastic.uniform(arg_values[0], arg_values[1]))
+            }
+
+            "NORMAL" => {
+                // NORMAL(mean, std_dev)
+                if arg_values.len() != 2 {
+                    return Err(format!("NORMAL expects 2 arguments, got {}", arg_values.len()));
+                }
+                context.state.stochastic.normal(arg_values[0], arg_values[1])
+            }
+
+            "LOGNORMAL" => {
+                // LOGNORMAL(mean, std_dev)
+                if arg_values.len() != 2 {
+                    return Err(format!("LOGNORMAL expects 2 arguments, got {}", arg_values.len()));
+                }
+                context.state.stochastic.lognormal(arg_values[0], arg_values[1])
+            }
+
+            "POISSON" => {
+                // POISSON(lambda)
+                if arg_values.len() != 1 {
+                    return Err(format!("POISSON expects 1 argument, got {}", arg_values.len()));
+                }
+                context.state.stochastic.poisson(arg_values[0])
+            }
+
+            // Agent-Based Modeling functions
+            // Note: These are simplified implementations. In practice, you'd want to
+            // support string arguments for agent type names. For now, we use parameter references.
+            "AGENT_COUNT" => {
+                // AGENT_COUNT() - total count of all agents
+                // or AGENT_COUNT(type_name) - count of specific type (not yet implemented)
+                if arg_values.is_empty() {
+                    Ok(context.state.agents.total_agent_count() as f64)
+                } else {
+                    Err("AGENT_COUNT with type parameter not yet implemented - use AGENT_COUNT()".to_string())
+                }
+            }
+
+            "AGENT_SUM" => {
+                // AGENT_SUM(type_name, attribute_name)
+                // Simplified: expects numeric parameters
+                Err("AGENT_SUM requires string arguments for type and attribute names".to_string())
+            }
+
+            "AGENT_MEAN" => {
+                // AGENT_MEAN(type_name, attribute_name)
+                Err("AGENT_MEAN requires string arguments for type and attribute names".to_string())
+            }
+
+            "AGENT_MAX" => {
+                // AGENT_MAX(type_name, attribute_name)
+                Err("AGENT_MAX requires string arguments for type and attribute names".to_string())
+            }
+
+            "AGENT_MIN" => {
+                // AGENT_MIN(type_name, attribute_name)
+                Err("AGENT_MIN requires string arguments for type and attribute names".to_string())
+            }
+
             _ => Err(format!("Unknown function: '{}' (length: {})", name, name.len()))
         }
     }
@@ -773,12 +941,12 @@ impl Expression {
 /// Context for evaluating expressions
 pub struct EvaluationContext<'a> {
     pub model: &'a crate::model::Model,
-    pub state: &'a crate::simulation::SimulationState,
+    pub state: &'a mut crate::simulation::SimulationState,
     pub time: f64,
 }
 
 impl<'a> EvaluationContext<'a> {
-    pub fn new(model: &'a crate::model::Model, state: &'a crate::simulation::SimulationState, time: f64) -> Self {
+    pub fn new(model: &'a crate::model::Model, state: &'a mut crate::simulation::SimulationState, time: f64) -> Self {
         Self { model, state, time }
     }
 
