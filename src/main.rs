@@ -12,6 +12,8 @@ mod model;
 mod simulation;
 mod io;
 mod analysis;
+mod server;
+mod visualization;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -58,9 +60,17 @@ enum Commands {
 
     /// Show version and info
     Info,
+
+    /// Start web server
+    Serve {
+        /// Port to listen on
+        #[arg(short, long, default_value = "8080")]
+        port: u16,
+    },
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
@@ -72,6 +82,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some(Commands::Info) => {
             show_info();
+        }
+        Some(Commands::Serve { port }) => {
+            server::serve(port).await;
         }
         None => {
             show_info();
