@@ -187,6 +187,7 @@ pub fn parse_xmile(xml: &str) -> Result<Model, String> {
             units: xstock.units,
             non_negative: xstock.non_negative,
             max_value: xstock.max_value,
+            dimensions: None,
         };
         model.add_stock(stock)?;
     }

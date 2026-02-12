@@ -2,7 +2,7 @@
 
 use crate::model::Model;
 use super::{SimulationState, SimulationConfig, SimulationResults, Integrator};
-use super::integrator::{EulerIntegrator, RK4Integrator};
+use super::integrator::{EulerIntegrator, RK4Integrator, HeunIntegrator, BackwardEulerIntegrator, RK45Integrator};
 use super::IntegrationMethod;
 
 pub struct SimulationEngine {
@@ -35,6 +35,9 @@ impl SimulationEngine {
         let integrator: Box<dyn Integrator> = match self.config.integration_method {
             IntegrationMethod::Euler => Box::new(EulerIntegrator),
             IntegrationMethod::RK4 => Box::new(RK4Integrator),
+            IntegrationMethod::RK45 => Box::new(RK45Integrator::default()),
+            IntegrationMethod::Heun => Box::new(HeunIntegrator),
+            IntegrationMethod::BackwardEuler => Box::new(BackwardEulerIntegrator::default()),
         };
 
         // Main simulation loop
@@ -70,6 +73,9 @@ impl SimulationEngine {
         let integrator: Box<dyn Integrator> = match self.config.integration_method {
             IntegrationMethod::Euler => Box::new(EulerIntegrator),
             IntegrationMethod::RK4 => Box::new(RK4Integrator),
+            IntegrationMethod::RK45 => Box::new(RK45Integrator::default()),
+            IntegrationMethod::Heun => Box::new(HeunIntegrator),
+            IntegrationMethod::BackwardEuler => Box::new(BackwardEulerIntegrator::default()),
         };
 
         self.state = integrator.step(&self.model, &self.state, self.model.time.dt)?;

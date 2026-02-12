@@ -725,6 +725,384 @@ impl Integrator for BackwardEulerIntegrator {
     }
 }
 
+/// Dormand-Prince RK45 adaptive integrator
+/// A 5th order Runge-Kutta method with 4th order error estimation
+/// Automatically adjusts step size based on error tolerance
+pub struct RK45Integrator {
+    /// Relative error tolerance
+    pub rtol: f64,
+    /// Absolute error tolerance
+    pub atol: f64,
+    /// Minimum allowed step size
+    pub min_step: f64,
+    /// Maximum allowed step size
+    pub max_step: f64,
+    /// Safety factor for step size adjustment
+    pub safety_factor: f64,
+}
+
+impl Default for RK45Integrator {
+    fn default() -> Self {
+        Self {
+            rtol: 1e-6,
+            atol: 1e-8,
+            min_step: 1e-10,
+            max_step: 1.0,
+            safety_factor: 0.9,
+        }
+    }
+}
+
+impl RK45Integrator {
+    pub fn new(rtol: f64, atol: f64) -> Self {
+        Self {
+            rtol,
+            atol,
+            ..Default::default()
+        }
+    }
+
+    pub fn with_step_limits(mut self, min_step: f64, max_step: f64) -> Self {
+        self.min_step = min_step;
+        self.max_step = max_step;
+        self
+    }
+
+    /// Evaluate system at a given state
+    fn evaluate_system(
+        &self,
+        model: &Model,
+        state: &SimulationState,
+        time: f64,
+    ) -> Result<(HashMap<String, f64>, HashMap<String, f64>), String> {
+        // Evaluate auxiliaries with fixed-point iteration
+        let mut auxiliaries = state.auxiliaries.clone();
+        const MAX_PASSES: usize = 20;
+
+        for pass in 0..MAX_PASSES {
+            let mut changed = false;
+            let mut temp_state = state.clone();
+            temp_state.auxiliaries = auxiliaries.clone();
+            let mut any_errors = false;
+
+            for (name, aux) in &model.auxiliaries {
+                let mut eval_state = temp_state.clone();
+                let mut context = EvaluationContext::new(model, &mut eval_state, time);
+
+                match aux.equation.evaluate(&mut context) {
+                    Ok(value) => {
+                        if let Some(&old_value) = auxiliaries.get(name) {
+                            let diff: f64 = value - old_value;
+                            if diff.abs() > 1e-10 {
+                                changed = true;
+                            }
+                        } else {
+                            changed = true;
+                        }
+                        auxiliaries.insert(name.clone(), value);
+                    }
+                    Err(e) => {
+                        if pass >= 5 {
+                            return Err(format!("Error evaluating auxiliary '{}' (pass {}): {}", name, pass + 1, e));
+                        }
+                        any_errors = true;
+                    }
+                }
+            }
+
+            if !changed && !any_errors && pass > 0 {
+                break;
+            }
+        }
+
+        // Evaluate flows
+        let mut eval_state = state.clone();
+        eval_state.auxiliaries = auxiliaries.clone();
+
+        let mut flows = HashMap::new();
+        for (name, flow) in &model.flows {
+            let mut temp_state = eval_state.clone();
+            let mut context = EvaluationContext::new(model, &mut temp_state, time);
+
+            let value = flow.equation.evaluate(&mut context)
+                .map_err(|e| format!("Error evaluating flow '{}': {}", name, e))?;
+            flows.insert(name.clone(), value);
+        }
+
+        Ok((auxiliaries, flows))
+    }
+
+    /// Compute derivatives (inflows - outflows) for all stocks
+    fn compute_derivatives(
+        &self,
+        model: &Model,
+        flows: &HashMap<String, f64>,
+    ) -> Result<HashMap<String, f64>, String> {
+        let mut derivatives = HashMap::new();
+
+        for (stock_name, stock) in &model.stocks {
+            let mut derivative = 0.0;
+
+            for inflow_name in &stock.inflows {
+                if let Some(flow_value) = flows.get(inflow_name) {
+                    derivative += flow_value;
+                } else {
+                    return Err(format!("Inflow '{}' not found for stock '{}'", inflow_name, stock_name));
+                }
+            }
+
+            for outflow_name in &stock.outflows {
+                if let Some(flow_value) = flows.get(outflow_name) {
+                    derivative -= flow_value;
+                } else {
+                    return Err(format!("Outflow '{}' not found for stock '{}'", outflow_name, stock_name));
+                }
+            }
+
+            derivatives.insert(stock_name.clone(), derivative);
+        }
+
+        Ok(derivatives)
+    }
+
+    /// Apply stock increments to create new state
+    fn apply_stock_increments(
+        &self,
+        base_state: &SimulationState,
+        increments: &HashMap<String, f64>,
+    ) -> SimulationState {
+        let mut new_state = base_state.clone();
+        for (stock_name, increment) in increments {
+            if let Some(&current_value) = base_state.stocks.get(stock_name) {
+                new_state.stocks.insert(stock_name.clone(), current_value + increment);
+            }
+        }
+        new_state
+    }
+
+    /// Compute error estimate and optimal step size
+    fn compute_error_and_step(
+        &self,
+        y4: &HashMap<String, f64>,
+        y5: &HashMap<String, f64>,
+        current_step: f64,
+    ) -> (f64, f64) {
+        let mut max_error: f64 = 0.0;
+
+        for (name, &val4) in y4 {
+            if let Some(&val5) = y5.get(name) {
+                let error = (val5 - val4).abs();
+                let scale = self.atol + self.rtol * val5.abs().max(val4.abs());
+                let normalized_error = error / scale;
+                max_error = max_error.max(normalized_error);
+            }
+        }
+
+        // Compute new step size
+        let new_step: f64 = if max_error > 0.0 {
+            self.safety_factor * current_step * (1.0 / max_error).powf(0.2)
+        } else {
+            current_step * 2.0
+        };
+
+        let new_step = new_step.max(self.min_step).min(self.max_step);
+
+        (max_error, new_step)
+    }
+}
+
+impl Integrator for RK45Integrator {
+    fn step(&self, model: &Model, state: &SimulationState, dt: f64) -> Result<SimulationState, String> {
+        // Dormand-Prince coefficients
+        // Butcher tableau for DOPRI5
+        let a21 = 1.0 / 5.0;
+        let a31 = 3.0 / 40.0;
+        let a32 = 9.0 / 40.0;
+        let a41 = 44.0 / 45.0;
+        let a42 = -56.0 / 15.0;
+        let a43 = 32.0 / 9.0;
+        let a51 = 19372.0 / 6561.0;
+        let a52 = -25360.0 / 2187.0;
+        let a53 = 64448.0 / 6561.0;
+        let a54 = -212.0 / 729.0;
+        let a61 = 9017.0 / 3168.0;
+        let a62 = -355.0 / 33.0;
+        let a63 = 46732.0 / 5247.0;
+        let a64 = 49.0 / 176.0;
+        let a65 = -5103.0 / 18656.0;
+        let a71 = 35.0 / 384.0;
+        let a73 = 500.0 / 1113.0;
+        let a74 = 125.0 / 192.0;
+        let a75 = -2187.0 / 6784.0;
+        let a76 = 11.0 / 84.0;
+
+        // 5th order weights
+        let b1 = 35.0 / 384.0;
+        let b3 = 500.0 / 1113.0;
+        let b4 = 125.0 / 192.0;
+        let b5 = -2187.0 / 6784.0;
+        let b6 = 11.0 / 84.0;
+
+        // 4th order weights for error estimation
+        let b1_star = 5179.0 / 57600.0;
+        let b3_star = 7571.0 / 16695.0;
+        let b4_star = 393.0 / 640.0;
+        let b5_star = -92097.0 / 339200.0;
+        let b6_star = 187.0 / 2100.0;
+        let b7_star = 1.0 / 40.0;
+
+        let t = state.time;
+        let mut h = dt.min(self.max_step);
+        const MAX_ATTEMPTS: usize = 10;
+
+        for _attempt in 0..MAX_ATTEMPTS {
+            // Stage 1: k1 = f(t, y)
+            let (_, flows1) = self.evaluate_system(model, state, t)?;
+            let k1 = self.compute_derivatives(model, &flows1)?;
+
+            // Stage 2
+            let inc2: HashMap<String, f64> = k1.iter()
+                .map(|(name, &d)| (name.clone(), a21 * d * h))
+                .collect();
+            let state2 = self.apply_stock_increments(state, &inc2);
+            let (_, flows2) = self.evaluate_system(model, &state2, t + h / 5.0)?;
+            let k2 = self.compute_derivatives(model, &flows2)?;
+
+            // Stage 3
+            let inc3: HashMap<String, f64> = k1.iter()
+                .map(|(name, &d1)| {
+                    let d2 = k2.get(name).unwrap_or(&0.0);
+                    (name.clone(), (a31 * d1 + a32 * d2) * h)
+                })
+                .collect();
+            let state3 = self.apply_stock_increments(state, &inc3);
+            let (_, flows3) = self.evaluate_system(model, &state3, t + 3.0 * h / 10.0)?;
+            let k3 = self.compute_derivatives(model, &flows3)?;
+
+            // Stage 4
+            let inc4: HashMap<String, f64> = k1.iter()
+                .map(|(name, &d1)| {
+                    let d2 = k2.get(name).unwrap_or(&0.0);
+                    let d3 = k3.get(name).unwrap_or(&0.0);
+                    (name.clone(), (a41 * d1 + a42 * d2 + a43 * d3) * h)
+                })
+                .collect();
+            let state4 = self.apply_stock_increments(state, &inc4);
+            let (_, flows4) = self.evaluate_system(model, &state4, t + 4.0 * h / 5.0)?;
+            let k4 = self.compute_derivatives(model, &flows4)?;
+
+            // Stage 5
+            let inc5: HashMap<String, f64> = k1.iter()
+                .map(|(name, &d1)| {
+                    let d2 = k2.get(name).unwrap_or(&0.0);
+                    let d3 = k3.get(name).unwrap_or(&0.0);
+                    let d4 = k4.get(name).unwrap_or(&0.0);
+                    (name.clone(), (a51 * d1 + a52 * d2 + a53 * d3 + a54 * d4) * h)
+                })
+                .collect();
+            let state5 = self.apply_stock_increments(state, &inc5);
+            let (_, flows5) = self.evaluate_system(model, &state5, t + 8.0 * h / 9.0)?;
+            let k5 = self.compute_derivatives(model, &flows5)?;
+
+            // Stage 6
+            let inc6: HashMap<String, f64> = k1.iter()
+                .map(|(name, &d1)| {
+                    let d2 = k2.get(name).unwrap_or(&0.0);
+                    let d3 = k3.get(name).unwrap_or(&0.0);
+                    let d4 = k4.get(name).unwrap_or(&0.0);
+                    let d5 = k5.get(name).unwrap_or(&0.0);
+                    (name.clone(), (a61 * d1 + a62 * d2 + a63 * d3 + a64 * d4 + a65 * d5) * h)
+                })
+                .collect();
+            let state6 = self.apply_stock_increments(state, &inc6);
+            let (_, flows6) = self.evaluate_system(model, &state6, t + h)?;
+            let k6 = self.compute_derivatives(model, &flows6)?;
+
+            // Stage 7
+            let inc7: HashMap<String, f64> = k1.iter()
+                .map(|(name, &d1)| {
+                    let d3 = k3.get(name).unwrap_or(&0.0);
+                    let d4 = k4.get(name).unwrap_or(&0.0);
+                    let d5 = k5.get(name).unwrap_or(&0.0);
+                    let d6 = k6.get(name).unwrap_or(&0.0);
+                    (name.clone(), (a71 * d1 + a73 * d3 + a74 * d4 + a75 * d5 + a76 * d6) * h)
+                })
+                .collect();
+            let state7 = self.apply_stock_increments(state, &inc7);
+            let (aux7, flows7) = self.evaluate_system(model, &state7, t + h)?;
+            let k7 = self.compute_derivatives(model, &flows7)?;
+
+            // Compute 5th order solution
+            let mut y5 = HashMap::new();
+            for (name, &y0) in &state.stocks {
+                let d1 = k1.get(name).unwrap_or(&0.0);
+                let d3 = k3.get(name).unwrap_or(&0.0);
+                let d4 = k4.get(name).unwrap_or(&0.0);
+                let d5 = k5.get(name).unwrap_or(&0.0);
+                let d6 = k6.get(name).unwrap_or(&0.0);
+                let val = y0 + (b1 * d1 + b3 * d3 + b4 * d4 + b5 * d5 + b6 * d6) * h;
+                y5.insert(name.clone(), val);
+            }
+
+            // Compute 4th order solution for error estimation
+            let mut y4 = HashMap::new();
+            for (name, &y0) in &state.stocks {
+                let d1 = k1.get(name).unwrap_or(&0.0);
+                let d3 = k3.get(name).unwrap_or(&0.0);
+                let d4 = k4.get(name).unwrap_or(&0.0);
+                let d5 = k5.get(name).unwrap_or(&0.0);
+                let d6 = k6.get(name).unwrap_or(&0.0);
+                let d7 = k7.get(name).unwrap_or(&0.0);
+                let val = y0 + (b1_star * d1 + b3_star * d3 + b4_star * d4 + b5_star * d5 + b6_star * d6 + b7_star * d7) * h;
+                y4.insert(name.clone(), val);
+            }
+
+            // Check error and adjust step size
+            let (error, new_h) = self.compute_error_and_step(&y4, &y5, h);
+
+            if error <= 1.0 {
+                // Accept the step
+                let mut new_state = state.clone();
+                new_state.time = t + h;
+
+                // Apply constraints and use 5th order solution
+                for (stock_name, &new_value) in &y5 {
+                    let constrained_value = if let Some(stock) = model.stocks.get(stock_name) {
+                        let mut value = new_value;
+                        if stock.non_negative {
+                            value = value.max(0.0);
+                        }
+                        if let Some(max_val) = stock.max_value {
+                            value = value.min(max_val);
+                        }
+                        value
+                    } else {
+                        new_value
+                    };
+
+                    new_state.stocks.insert(stock_name.clone(), constrained_value);
+                }
+
+                new_state.auxiliaries = aux7;
+                new_state.flows = flows7;
+
+                return Ok(new_state);
+            } else {
+                // Reject and retry with smaller step
+                h = new_h;
+                if h < self.min_step {
+                    return Err(format!(
+                        "Step size ({}) below minimum ({}). Error: {}",
+                        h, self.min_step, error
+                    ));
+                }
+            }
+        }
+
+        Err("RK45 failed to converge after maximum attempts".to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

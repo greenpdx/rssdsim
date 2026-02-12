@@ -6,9 +6,13 @@
 /// - NORMAL: Normal distribution (mean, std_dev)
 /// - LOGNORMAL: Log-normal distribution
 /// - POISSON: Poisson distribution
+/// - WHITE_NOISE: White noise (uncorrelated Gaussian)
+/// - PINK_NOISE: Pink noise (1/f noise, correlated)
 
 use rand::prelude::*;
 use rand_distr::{Distribution, Normal, Poisson, LogNormal};
+use super::noise::{WhiteNoiseGenerator, PinkNoiseGenerator, PinkNoiseKellet};
+use std::collections::HashMap;
 
 /// Manager for stochastic elements in simulation
 #[derive(Debug, Clone)]
@@ -17,6 +21,12 @@ pub struct StochasticManager {
     rng: StdRng,
     /// Seed for reproducibility
     seed: Option<u64>,
+    /// White noise generators (keyed by identifier)
+    white_noise_generators: HashMap<String, WhiteNoiseGenerator>,
+    /// Pink noise generators using Voss-McCartney algorithm
+    pink_noise_generators: HashMap<String, PinkNoiseGenerator>,
+    /// Pink noise generators using Kellet algorithm (better quality)
+    pink_noise_kellet_generators: HashMap<String, PinkNoiseKellet>,
 }
 
 impl StochasticManager {
@@ -24,6 +34,9 @@ impl StochasticManager {
         Self {
             rng: StdRng::from_entropy(),
             seed: None,
+            white_noise_generators: HashMap::new(),
+            pink_noise_generators: HashMap::new(),
+            pink_noise_kellet_generators: HashMap::new(),
         }
     }
 
@@ -31,6 +44,9 @@ impl StochasticManager {
         Self {
             rng: StdRng::seed_from_u64(seed),
             seed: Some(seed),
+            white_noise_generators: HashMap::new(),
+            pink_noise_generators: HashMap::new(),
+            pink_noise_kellet_generators: HashMap::new(),
         }
     }
 
@@ -68,10 +84,55 @@ impl StochasticManager {
         Ok(poisson.sample(&mut self.rng) as f64)
     }
 
+    /// Generate white noise sample
+    /// identifier: unique name for this noise source
+    /// mean: mean value
+    /// std_dev: standard deviation
+    /// dt: time step for proper scaling
+    pub fn white_noise(&mut self, identifier: &str, mean: f64, std_dev: f64, dt: f64) -> f64 {
+        let generator = self.white_noise_generators
+            .entry(identifier.to_string())
+            .or_insert_with(|| WhiteNoiseGenerator::new(mean, std_dev, 1.0));
+
+        generator.sample_dt(&mut self.rng, dt)
+    }
+
+    /// Generate pink noise sample using Voss-McCartney algorithm
+    /// identifier: unique name for this noise source
+    /// amplitude: amplitude scaling
+    /// offset: DC offset
+    pub fn pink_noise(&mut self, identifier: &str, amplitude: f64, offset: f64) -> f64 {
+        let generator = self.pink_noise_generators
+            .entry(identifier.to_string())
+            .or_insert_with(|| PinkNoiseGenerator::new(amplitude, offset, 16));
+
+        generator.sample(&mut self.rng)
+    }
+
+    /// Generate pink noise sample using Kellet algorithm (better quality)
+    /// identifier: unique name for this noise source
+    /// amplitude: amplitude scaling
+    /// offset: DC offset
+    pub fn pink_noise_hq(&mut self, identifier: &str, amplitude: f64, offset: f64) -> f64 {
+        let generator = self.pink_noise_kellet_generators
+            .entry(identifier.to_string())
+            .or_insert_with(|| PinkNoiseKellet::new(amplitude, offset));
+
+        generator.sample(&mut self.rng)
+    }
+
     /// Reset RNG with a new seed
     pub fn reseed(&mut self, seed: u64) {
         self.rng = StdRng::seed_from_u64(seed);
         self.seed = Some(seed);
+
+        // Reset all noise generators
+        for generator in self.pink_noise_generators.values_mut() {
+            generator.reset();
+        }
+        for generator in self.pink_noise_kellet_generators.values_mut() {
+            generator.reset();
+        }
     }
 }
 

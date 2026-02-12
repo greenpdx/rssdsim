@@ -9,11 +9,12 @@ pub mod arrayvalue;
 pub mod delay;
 pub mod lookup;
 pub mod stochastic;
+pub mod noise;
 pub mod abm;
 pub mod agent_sd_bridge;
 
 pub use engine::SimulationEngine;
-pub use integrator::{Integrator, EulerIntegrator, RK4Integrator, HeunIntegrator, BackwardEulerIntegrator};
+pub use integrator::{Integrator, EulerIntegrator, RK4Integrator, HeunIntegrator, BackwardEulerIntegrator, RK45Integrator};
 pub use arrayvalue::{ArrayValue, ArraySimulationState};
 pub use delay::DelayManager;
 pub use lookup::LookupTable;
@@ -98,6 +99,9 @@ pub struct SimulationConfig {
 pub enum IntegrationMethod {
     Euler,
     RK4,
+    RK45,
+    Heun,
+    BackwardEuler,
 }
 
 impl Default for SimulationConfig {

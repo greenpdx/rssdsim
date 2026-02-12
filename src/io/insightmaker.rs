@@ -135,6 +135,7 @@ pub fn parse_insightmaker(json: &str) -> Result<Model, String> {
                 units: prim.units.clone(),
                 non_negative: false,
                 max_value: None,
+                dimensions: None,
             };
 
             model.add_stock(stock)?;

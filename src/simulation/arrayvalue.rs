@@ -164,6 +164,9 @@ pub struct ArraySimulationState {
     pub stocks: HashMap<String, ArrayValue>,
     pub flows: HashMap<String, ArrayValue>,
     pub auxiliaries: HashMap<String, ArrayValue>,
+    pub delays: super::DelayManager,
+    pub stochastic: super::StochasticManager,
+    pub agents: super::AgentManager,
 }
 
 impl ArraySimulationState {
@@ -173,6 +176,9 @@ impl ArraySimulationState {
             stocks: HashMap::new(),
             flows: HashMap::new(),
             auxiliaries: HashMap::new(),
+            delays: super::DelayManager::new(),
+            stochastic: super::StochasticManager::new(),
+            agents: super::AgentManager::new(),
         }
     }
 
@@ -189,6 +195,126 @@ impl ArraySimulationState {
         self.get_value(name)
             .ok_or_else(|| format!("Variable '{}' not found", name))?
             .get(indices)
+    }
+
+    /// Initialize from a model, detecting array dimensions from model definition
+    pub fn initialize_from_model(model: &crate::model::Model) -> Result<Self, String> {
+        use crate::model::expression::EvaluationContext;
+
+        let mut state = Self::new();
+        state.time = model.time.start;
+
+        // Initialize stocks with their initial values
+        // For now, treat all as scalars (array support requires dimension info in model)
+        for (name, stock) in &model.stocks {
+            let mut temp_state_scalar = super::SimulationState::new();
+            temp_state_scalar.time = model.time.start;
+
+            let mut context = EvaluationContext::new(model, &mut temp_state_scalar, model.time.start);
+            let initial_value = stock.initial.evaluate(&mut context)?;
+
+            // Check if stock has dimensions defined
+            if let Some(ref dim_names) = stock.dimensions {
+                // Get shape from dimensions
+                let mut shape = Vec::new();
+                let mut valid = true;
+                for dim_name in dim_names {
+                    if let Some(dimension) = model.dimensions.get(dim_name) {
+                        shape.push(dimension.elements.len());
+                    } else {
+                        valid = false;
+                        break;
+                    }
+                }
+
+                if valid && !shape.is_empty() {
+                    // Create array initialized with the scalar value
+                    let size: usize = shape.iter().product();
+                    state.stocks.insert(name.clone(), ArrayValue::Array {
+                        shape,
+                        data: vec![initial_value; size],
+                    });
+                } else {
+                    // Fallback to scalar if dimensions not found
+                    state.stocks.insert(name.clone(), ArrayValue::Scalar(initial_value));
+                }
+            } else {
+                // No dimensions defined, use scalar
+                state.stocks.insert(name.clone(), ArrayValue::Scalar(initial_value));
+            }
+
+            // Merge back state changes
+            state.delays = temp_state_scalar.delays;
+            state.stochastic = temp_state_scalar.stochastic;
+            state.agents = temp_state_scalar.agents;
+        }
+
+        // Initialize flows
+        for name in model.flows.keys() {
+            state.flows.insert(name.clone(), ArrayValue::Scalar(0.0));
+        }
+
+        // Initialize auxiliaries
+        for name in model.auxiliaries.keys() {
+            state.auxiliaries.insert(name.clone(), ArrayValue::Scalar(0.0));
+        }
+
+        Ok(state)
+    }
+
+    /// Convert to scalar SimulationState (for backward compatibility)
+    /// Arrays are flattened or summed
+    pub fn to_scalar_state(&self) -> super::SimulationState {
+        let mut scalar_state = super::SimulationState::new();
+        scalar_state.time = self.time;
+        scalar_state.delays = self.delays.clone();
+        scalar_state.stochastic = self.stochastic.clone();
+        scalar_state.agents = self.agents.clone();
+
+        // Convert stocks
+        for (name, value) in &self.stocks {
+            scalar_state.stocks.insert(
+                name.clone(),
+                value.as_scalar().unwrap_or_else(|_| {
+                    // Sum all elements for arrays
+                    if let ArrayValue::Array { data, .. } = value {
+                        data.iter().sum()
+                    } else {
+                        0.0
+                    }
+                }),
+            );
+        }
+
+        // Convert flows
+        for (name, value) in &self.flows {
+            scalar_state.flows.insert(
+                name.clone(),
+                value.as_scalar().unwrap_or_else(|_| {
+                    if let ArrayValue::Array { data, .. } = value {
+                        data.iter().sum()
+                    } else {
+                        0.0
+                    }
+                }),
+            );
+        }
+
+        // Convert auxiliaries
+        for (name, value) in &self.auxiliaries {
+            scalar_state.auxiliaries.insert(
+                name.clone(),
+                value.as_scalar().unwrap_or_else(|_| {
+                    if let ArrayValue::Array { data, .. } = value {
+                        data.iter().sum()
+                    } else {
+                        0.0
+                    }
+                }),
+            );
+        }
+
+        scalar_state
     }
 }
 

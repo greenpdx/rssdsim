@@ -105,6 +105,7 @@ impl JsonModel {
                 units: stock.units,
                 non_negative: false,
                 max_value: None,
+                dimensions: None,
             };
             model.add_stock(s)?;
         }

@@ -17,6 +17,9 @@ pub struct Stock {
     pub non_negative: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_value: Option<f64>,
+    /// Optional dimensions/subscripts for array variables
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dimensions: Option<Vec<String>>,
 }
 
 impl Stock {
@@ -29,6 +32,7 @@ impl Stock {
             units: None,
             non_negative: false,
             max_value: None,
+            dimensions: None,
         }
     }
 
@@ -59,6 +63,11 @@ impl Stock {
 
     pub fn with_max_value(mut self, max_value: f64) -> Self {
         self.max_value = Some(max_value);
+        self
+    }
+
+    pub fn with_dimensions(mut self, dimensions: Vec<String>) -> Self {
+        self.dimensions = Some(dimensions);
         self
     }
 }
